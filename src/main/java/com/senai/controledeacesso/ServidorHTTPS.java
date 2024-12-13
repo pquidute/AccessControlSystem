@@ -200,10 +200,10 @@ public class ServidorHTTPS {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             exchange.getResponseHeaders().set("Content-Type", "application/json");
-            String jsonResponse = ControleDeAcesso.matrizRegistrosDeAcesso.length == 0
+            String jsonResponse = Main.matrizRegistrosDeAcesso.length == 0
                     ? "[]"
                     : "[" +
-                    Arrays.stream(ControleDeAcesso.matrizRegistrosDeAcesso)
+                    Arrays.stream(Main.matrizRegistrosDeAcesso)
                             .map(registro -> String.format("{\"nome\":\"%s\",\"horario\":\"%s\",\"imagem\":\"%s\"}", registro[0], registro[1], registro[2]))
                             .collect(Collectors.joining(",")) +
                     "]";
@@ -222,8 +222,8 @@ public class ServidorHTTPS {
             JSONArray jsonArray = new JSONArray();
 
             // Percorre a matrizCadastro a partir da segunda linha (ignora cabeçalho)
-            for (int i = 1; i < ControleDeAcesso.matrizCadastro.length; i++) {
-                String[] registro = ControleDeAcesso.matrizCadastro[i];
+            for (int i = 1; i < Main.matrizCadastro.length; i++) {
+                String[] registro = Main.matrizCadastro[i];
                 if (registro != null) { // Verifica se a linha está preenchida
                     JSONObject json = new JSONObject();
                     json.put("id", registro[0]);
@@ -261,7 +261,7 @@ public class ServidorHTTPS {
                 }
 
                 // Gera novo ID e cria o registro
-                int novoID = ControleDeAcesso.matrizCadastro.length;
+                int novoID = Main.matrizCadastro.length;
 
                 JSONObject json = new JSONObject(corpoDaRequisicao.toString());
                 String nome = json.getString("nome");
@@ -280,13 +280,13 @@ public class ServidorHTTPS {
                 String[] novoUsuario = {String.valueOf(novoID), "-", nome, telefone, email, nomeImagem};
                 String[][] novaMatriz = new String[novoID + 1][novoUsuario[0].length()];
 
-                for (int linhas = 0; linhas < ControleDeAcesso.matrizCadastro.length; linhas++) {
-                    novaMatriz[linhas] = Arrays.copyOf(ControleDeAcesso.matrizCadastro[linhas], ControleDeAcesso.matrizCadastro[linhas].length);
+                for (int linhas = 0; linhas < Main.matrizCadastro.length; linhas++) {
+                    novaMatriz[linhas] = Arrays.copyOf(Main.matrizCadastro[linhas], Main.matrizCadastro[linhas].length);
                 }
 
                 novaMatriz[novoID] = novoUsuario;
-                ControleDeAcesso.matrizCadastro = novaMatriz;
-                ControleDeAcesso.salvarDadosNoArquivo();
+                Main.matrizCadastro = novaMatriz;
+                Main.salvarDadosNoArquivo();
 
                 String responseMessage = "Cadastro recebido com sucesso!";
                 exchange.sendResponseHeaders(200, responseMessage.length());
@@ -335,17 +335,17 @@ public class ServidorHTTPS {
                         salvarImagem(json.getString("imagem"),id+registro[2] );
                         registro[5] = id+registro[2];
                     } else {
-                        registro[5] = ControleDeAcesso.matrizCadastro[id][2].equals(registro[2])
-                                ? ControleDeAcesso.matrizCadastro[id][5]
+                        registro[5] = Main.matrizCadastro[id][2].equals(registro[2])
+                                ? Main.matrizCadastro[id][5]
                                 : nomeImagem;
                     }
                     //Logs
                     System.out.println("Edição: nome : " + registro[2] + " | telefone : " + registro[3] + " | email : " + registro[4]);
 
                     // Substitui o cadastro na matriz com os novos dados
-                    ControleDeAcesso.matrizCadastro[id] = registro;
+                    Main.matrizCadastro[id] = registro;
 
-                    ControleDeAcesso.salvarDadosNoArquivo();
+                    Main.salvarDadosNoArquivo();
 
                     // Resposta de sucesso
                     String response = "{\"status\":\"Cadastro atualizado com sucesso.\"}";
@@ -370,7 +370,7 @@ public class ServidorHTTPS {
     private void salvarImagem(String imagemBase64, String nomeImagem) throws IOException {
         byte[] dados = Base64.getDecoder().decode(imagemBase64);
         // Caminho completo para salvar a imagem
-        File arquivoNovaImagem = new File(ControleDeAcesso.pastaImagens, nomeImagem + ".png");
+        File arquivoNovaImagem = new File(Main.pastaImagens, nomeImagem + ".png");
         try (FileOutputStream fileOutputStream = new FileOutputStream(arquivoNovaImagem)) {
             fileOutputStream.write(dados);
         }
@@ -395,9 +395,9 @@ public class ServidorHTTPS {
                     int id = Integer.parseInt(idPath);
                     System.out.println("ID convertido para inteiro: " + id);
 
-                    if (id > 0 && id < ControleDeAcesso.matrizCadastro.length && ControleDeAcesso.matrizCadastro[id] != null) {
-                        ControleDeAcesso.idUsuarioRecebidoPorHTTP = id;
-                        ControleDeAcesso.deletarUsuario();
+                    if (id > 0 && id < Main.matrizCadastro.length && Main.matrizCadastro[id] != null) {
+                        Main.idUsuarioRecebidoPorHTTP = id;
+                        Main.deletarUsuario();
 
                         response = "{\"status\":\"Cadastro deletado com sucesso.\"}";
                         statusCode = 200;
@@ -437,7 +437,7 @@ public class ServidorHTTPS {
             System.out.println("Iniciando processamento no ImagemHandler");
 
             // Recupera o caminho completo da imagem solicitado pela URI
-            String imagePath = ControleDeAcesso.pastaImagens.getAbsolutePath() +"\\"+
+            String imagePath = Main.pastaImagens.getAbsolutePath() +"\\"+
                     exchange.getRequestURI().getPath().replace("/imagens/", "")+".png";
             System.out.println("Caminho completo da imagem requisitada: " + imagePath);
 
@@ -489,7 +489,7 @@ public class ServidorHTTPS {
                 String nomeImagem = path.replaceFirst("/imagens/deletar/", "") + ".png";
                 System.out.println("Nome da imagem extraído: " + nomeImagem);
 
-                File arquivoImagem = new File(ControleDeAcesso.pastaImagens.getAbsolutePath(), nomeImagem);
+                File arquivoImagem = new File(Main.pastaImagens.getAbsolutePath(), nomeImagem);
                 System.out.println("Caminho completo do arquivo: " + arquivoImagem.getAbsolutePath());
 
                 if (arquivoImagem.exists() && arquivoImagem.isFile()) {
@@ -538,11 +538,11 @@ public class ServidorHTTPS {
                 String dispositivo = json.getString("dispositivo"); // Novo campo do dispositivo
 
                 // Iniciar o processo de registro da tag
-                ControleDeAcesso.idUsuarioRecebidoPorHTTP = usuarioId;
-                ControleDeAcesso.modoCadastrarIdAcesso = true;
+                Main.idUsuarioRecebidoPorHTTP = usuarioId;
+                Main.modoCadastrarIdAcesso = true;
 
                 // Publicar no broker qual dispositivo foi habilitado
-                ControleDeAcesso.conexaoMQTT.publicarMensagem("cadastro/disp", dispositivo);
+                Main.conexaoMQTT.publicarMensagem("cadastro/disp", dispositivo);
 
                 // Criação da resposta JSON
                 String response = new JSONObject()
@@ -566,7 +566,7 @@ public class ServidorHTTPS {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             int usuarioId = Integer.parseInt(exchange.getRequestURI().getPath().split("/")[2]);
-            String status = ControleDeAcesso.matrizCadastro[usuarioId][1].equals("-") ? "aguardando" : "sucesso";
+            String status = Main.matrizCadastro[usuarioId][1].equals("-") ? "aguardando" : "sucesso";
 
             String response = "{\"status\":\"" + status + "\"}";
             exchange.getResponseHeaders().add("Content-Type", "application/json");
