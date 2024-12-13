@@ -2,12 +2,9 @@ package com.senai.controledeacesso;
 
 import java.io.*;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Scanner;
-import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -18,6 +15,9 @@ public class Main {
     private static final File database = new File(pastaControleDeAcesso, "database.txt");
     private static final File accessRegistersDatabase = new File(pastaControleDeAcesso, "accessRegistersDatabase.txt");
     public static final File imagesFolder = new File(pastaControleDeAcesso, "images");
+    static String header = String.format("| %-5s | %-15s | %-20s | %-10s | %-10s | %-6s | %-10s |",
+            "ID", "NOME", "NÚMERO DE TELEFONE", "EMAIL", "IMAGE", "ATRASOS", "ID ACESSO");
+
     static ArrayList<Register> registersArray = new ArrayList<>();
     static ArrayList<accessRegister> accessRegistersArray = new ArrayList<>();
 
@@ -37,9 +37,9 @@ public class Main {
     public static void main(String[] args) {
         verificarEstruturaDeDiretorios();
         carregarDadosDoArquivo();
-        conexaoMQTT = new CLienteMQTT(brokerUrl, topico, Main::processarMensagemMQTTRecebida);
+        conexaoMQTT = new CLienteMQTT(brokerUrl, topico, Main::processMQTTmessageReceived);
         servidorHTTPS = new ServidorHTTPS();
-        menuPrincipal();
+        mainMenu();
 
         scanner.close();
         executorIdentificarAcessos.shutdown();
@@ -48,7 +48,7 @@ public class Main {
         servidorHTTPS.pararServidorHTTPS();
     }
 
-    private static void menuPrincipal() {
+    private static void mainMenu() {
         int opcao;
         System.out.println("            ------BEM VINDO------          ");
         do {
@@ -70,19 +70,19 @@ public class Main {
 
             switch (opcao) {
                 case 1:
-                    exibirCadastro();
+                    displayRegisters();
                     break;
                 case 2:
-                    cadastrarUsuario();
+                    registerUser();
                     break;
                 case 3:
-                    atualizarUsuario();
+                    updateUser();
                     break;
                 case 4:
                     deletarUsuario();
                     break;
                 case 5:
-                    aguardarCadastroDeIdAcesso();
+                    waitAccessIdRegister();
                     break;
                 case 6:
                     apagarRegistrosDeAcesso();
@@ -97,13 +97,13 @@ public class Main {
         } while (opcao != 7);
     }
 
-    private static void aguardarCadastroDeIdAcesso() {
+    private static void waitAccessIdRegister() {
         modoCadastrarIdAcesso = true;
         System.out.println("Aguardando nova tag ou cartão para associar ao usuário");
         Future<?> future = executorCadastroIdAcesso.submit(() -> {
             while (modoCadastrarIdAcesso) {
                 try {
-                    Thread.sleep(100); // Evita uso excessivo de CPU
+                    Thread.sleep(100);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -116,19 +116,16 @@ public class Main {
             System.err.println("Erro ao aguardar cadastro: " + e.getMessage());
         }
     }
-
-    private static void processarMensagemMQTTRecebida(String mensagem) {
+    private static void processMQTTmessageReceived(String message) {
         if (!modoCadastrarIdAcesso) {
-            executorIdentificarAcessos.submit(() -> criarNovoRegistroDeAcesso(mensagem));
+            executorIdentificarAcessos.submit(() -> createNewAccessRegister(message));
         } else {
-            cadastrarNovoIdAcesso(mensagem);
+            registerNewAccessId(message);
             modoCadastrarIdAcesso = false;
             idUsuarioRecebidoPorHTTP = 0;
         }
     }
-
-    // Função que busca e atualiza a tabela com o ID recebido
-    private static void criarNovoRegistroDeAcesso(String accessIdReceived) {
+    private static void createNewAccessRegister(String accessIdReceived) {
         boolean usuarioEncontrado = false;
         for (int i = 0; i < registersArray.size(); i++) {
             if (registersArray.get(i).accessRegister.accessId == Integer.parseInt(accessIdReceived)){
@@ -142,50 +139,38 @@ public class Main {
             break;
         }
     }
-
-    private static void cadastrarNovoIdAcesso(String novoIdAcesso) {
-        boolean encontrado = false; // Variável para verificar se o usuário foi encontrado
-        String idUsuarioEscolhido = String.valueOf(idUsuarioRecebidoPorHTTP);
-        String dispositivoEscolhido = dispositivoRecebidoPorHTTP;
+    private static void registerNewAccessId(String newAccessId) {
+        boolean found = false;
+        String userID= String.valueOf(idUsuarioRecebidoPorHTTP);
+        String chosenDevice = dispositivoRecebidoPorHTTP;
 
         if (idUsuarioRecebidoPorHTTP == 0) {
-            // Exibe a lista de usuários para o administrador escolher
-            for (String[] usuario : matrizCadastro) {
-                System.out.println(usuario[0] + " - " + usuario[2]); // Exibe ID e Nome do usuário
-            }
-            // Pede ao administrador que escolha o ID do usuário
+            displayRegisters();
             System.out.print("Digite o ID do usuário para associar ao novo idAcesso: ");
-            idUsuarioEscolhido = scanner.nextLine();
-            conexaoMQTT.publicarMensagem(topico, dispositivoEscolhido);
+            userID = scanner.nextLine();
+            conexaoMQTT.publicarMensagem(topico, chosenDevice);
         }
-
         modoCadastrarIdAcesso = true;
-        // Verifica se o ID do usuário existe na matriz
-        for (int linhas = 1; linhas < matrizCadastro.length; linhas++) {
-            if (matrizCadastro[linhas][0].equals(idUsuarioEscolhido)) { // Coluna 0 é o idUsuario
-                matrizCadastro[linhas][1] = novoIdAcesso; // Atualiza a coluna 1 com o novo idAcesso
-                System.out.println("id de acesso " + novoIdAcesso + " associado ao usuário " + matrizCadastro[linhas][2]);
+        for (int i = 0; i < registersArray.size(); i++) {
+            if (registersArray.get(i).ID == Integer.parseInt(userID)){
+                System.out.println("ID de acesso " + newAccessId + " associado ao usuário " + registersArray.get(i).name);
                 conexaoMQTT.publicarMensagem("cadastro/disp", "CadastroConcluido");
-                encontrado = true;
+                found = true;
                 salvarDadosNoArquivo();
                 break;
             }
         }
-
-        // Se não encontrou o usuário, imprime uma mensagem
-        if (!encontrado) {
-            System.out.println("Usuário com id" + idUsuarioEscolhido + " não encontrado.");
+        System.out.println("Usuário não encontrado!");
         }
-    }
 
-    // Funções de CRUD
-    private static void exibirCadastro() {
-        if (arrayRegisters.isEmpty()) {
+    private static void displayRegisters() {
+        if (registersArray.isEmpty()) {
             System.out.println("Não há cadastros registrados no sistema!");
             return;
         }
-        for (int i = 0; i < arrayRegisters.size(); i++) {
-            System.out.println(arrayRegisters.get(i).toString());
+        System.out.println(header);
+        for (int i = 0; i < registersArray.size(); i++) {
+            System.out.println(registersArray.get(i).toString());
         }
         System.out.println("Exibir registros de acesso?\n1. Sim\n2. Não");
         int menu = scanner.nextInt();
@@ -200,60 +185,80 @@ public class Main {
                 break;
         }
     }
-
-    private static void cadastrarUsuario() {
+    private static void registerUser() {
         System.out.print("Digite a quantidade de usuarios que deseja cadastrar:");
-        int qtdUsuarios = scanner.nextInt();
+        int users = scanner.nextInt();
         scanner.nextLine();
 
-        String[][] novaMatriz = new String[matrizCadastro.length + qtdUsuarios][matrizCadastro[0].length];
-
-        for (int linhas = 0; linhas < matrizCadastro.length; linhas++) {
-            novaMatriz[linhas] = Arrays.copyOf(matrizCadastro[linhas], matrizCadastro[linhas].length);
-        }
-
-        System.out.println("\nPreencha os dados a seguir:");
-        for (int linhas = matrizCadastro.length; linhas < novaMatriz.length; linhas++) {
-            System.out.println(matrizCadastro[0][0] + "- " + linhas);
-            novaMatriz[linhas][0] = String.valueOf(linhas);// preenche o campo id com o numero gerado pelo for
-            novaMatriz[linhas][1] = "-"; //preenche o campo idCadastro com "-"
-
-            for (int colunas = 2; colunas < matrizCadastro[0].length - 1; colunas++) {
-                System.out.print(matrizCadastro[0][colunas] + ": ");
-                novaMatriz[linhas][colunas] = scanner.nextLine();
+        for (int i = 0; i < users; i++) {
+            System.out.print("ID: ");
+            int id = scanner.nextInt();
+            scanner.nextLine();
+            System.out.print("NOME: ");
+            String name = scanner.nextLine();
+            System.out.print("TELEFONE: ");
+            String phoneNumber = scanner.nextLine();
+            System.out.print("EMAIL: ");
+            String email = scanner.nextLine();
+            System.out.println("Cadastrar ID de acesso?\n1. Sim\t\t\t2. Não");
+            int menu = scanner.nextInt();
+            scanner.nextLine();
+            switch (menu) {
+                case 1:
+                    System.out.print("ID de acesso: ");
+                    int accessId = scanner.nextInt();
+                    registersArray.add(new Register(id, name, phoneNumber, email));
+                    for (int j = 0; j < registersArray.size(); j++) {
+                        if (registersArray.get(i).ID == id) {
+                            registersArray.get(i).accessRegister.accessId = accessId;
+                        }
+                    }
+                    System.out.println("Cadastro concluído!");
+                    break;
+                case 2:
+                    registersArray.add(new Register(id, name, phoneNumber, email));
+                    System.out.println("Cadastro concluído!");
+                    break;
+                default:
+                    System.out.println("Opção inválida");
             }
-            novaMatriz[linhas][matrizCadastro[0].length - 1] = "-";//preenche o campo imagem com "-"
-
-            System.out.println("-----------------------Inserido com sucesso------------------------\n");
         }
-        matrizCadastro = novaMatriz;
-        salvarDadosNoArquivo();
     }
-
-    private static void atualizarUsuario() {
-
-        exibirCadastro();
-        System.out.println("Escolha um id para atualizar o cadastro:");
-        int idUsuario = scanner.nextInt();
+    private static void updateUser() {
+        displayRegisters();
+        System.out.print("Digite o ID do usuário que será atualizado: ");
+        int userID = scanner.nextInt();
         scanner.nextLine();
-        System.out.println("\nAtualize os dados a seguir:");
-
-        System.out.println(matrizCadastro[0][0] + "- " + idUsuario);
-        for (int dados = 2; dados < matrizCadastro[0].length; dados++) {
-            System.out.print(matrizCadastro[0][dados] + ": ");
-            matrizCadastro[idUsuario][dados] = scanner.nextLine();
+        for (int i = 0; i < registersArray.size(); i++) {
+            if (registersArray.get(i).ID == userID) {
+                System.out.println("\nAtualize os dados a seguir:");
+                System.out.print("ID: ");
+                int id = scanner.nextInt();
+                scanner.nextLine();
+                System.out.print("NOME: ");
+                String name = scanner.nextLine();
+                System.out.print("TELEFONE: ");
+                String phoneNumber = scanner.nextLine();
+                System.out.print("EMAIL: ");
+                String email = scanner.nextLine();
+                System.out.print("ID DE ACESSO: ");
+                int accessId = scanner.nextInt();
+                registersArray.get(i).ID = id;
+                registersArray.get(i).name = name;
+                registersArray.get(i).phoneNumber = phoneNumber;
+                registersArray.get(i).email = email;
+                registersArray.get(i).accessRegister.accessId = accessId;
+                System.out.println("Usuário atualizado com sucesso!");
+                return;
+            }
+            System.out.println("Usuário não encontrado!");
         }
-
-        System.out.println("---------Atualizado com sucesso-----------");
-        exibirCadastro();
-        salvarDadosNoArquivo();
     }
-
     public static void deletarUsuario() {
         String[][] novaMatriz = new String[matrizCadastro.length - 1][matrizCadastro[0].length];
         int idUsuario = idUsuarioRecebidoPorHTTP;
         if (idUsuarioRecebidoPorHTTP == 0) {
-            exibirCadastro();
+            displayRegisters();
             System.out.println("Escolha um id para deletar o cadastro:");
             idUsuario = scanner.nextInt();
             scanner.nextLine();
@@ -274,7 +279,6 @@ public class Main {
         idUsuarioRecebidoPorHTTP = 0;
     }
 
-    // Funções para persistência de dados
     private static void carregarDadosDoArquivo() {
 
         try (BufferedReader reader = new BufferedReader(new FileReader(arquivoBancoDeDados))) {
@@ -389,6 +393,3 @@ public class Main {
             System.out.println(arrayAccessRegisters.get(i).toString());
         }
     }
-}
-
-

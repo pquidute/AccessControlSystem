@@ -3,14 +3,13 @@ package com.senai.controledeacesso;
 public class Register {
     int ID;
     String name;
-    int phoneNumber;
+    String phoneNumber;
     String email;
     String image;
     accessRegister accessRegister;
 
-    Register(int ID, int accessId, String name, int phoneNumber, String email) {
+    Register(int ID, String name, String phoneNumber, String email) {
         this.ID = ID;
-        this.accessRegister.accessId = accessId;
         this.name = name;
         this.phoneNumber = phoneNumber;
         this.email = email;
@@ -19,9 +18,7 @@ public class Register {
 
     public String toString() {
         return String.format(
-                "| %-5s | %-15s | %-20s | %-10s | %-10s | %-6s | %-10s |\n" +
-                        "| %-5d | %-15s | %-20s | %-10s | %-10s | %-6d | %-10d |",
-                "ID", "NOME", "NÚMERO DE TELEFONE", "EMAIL", "IMAGE", "ATRASOS", "ID ACESSO",
+                "| %-5s | %-15s | %-20s | %-10s | %-10s | %-6s | %-10s |" +
                 ID, name, phoneNumber, email, image, accessRegister.delays, accessRegister.accessId
         );
     }
