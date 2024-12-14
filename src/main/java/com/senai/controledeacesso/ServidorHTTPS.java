@@ -286,7 +286,7 @@ public class ServidorHTTPS {
 
                 novaMatriz[novoID] = novoUsuario;
                 Main.matrizCadastro = novaMatriz;
-                Main.salvarDadosNoArquivo();
+                Main.saveData();
 
                 String responseMessage = "Cadastro recebido com sucesso!";
                 exchange.sendResponseHeaders(200, responseMessage.length());
@@ -345,7 +345,7 @@ public class ServidorHTTPS {
                     // Substitui o cadastro na matriz com os novos dados
                     Main.matrizCadastro[id] = registro;
 
-                    Main.salvarDadosNoArquivo();
+                    Main.saveData();
 
                     // Resposta de sucesso
                     String response = "{\"status\":\"Cadastro atualizado com sucesso.\"}";
@@ -397,7 +397,7 @@ public class ServidorHTTPS {
 
                     if (id > 0 && id < Main.matrizCadastro.length && Main.matrizCadastro[id] != null) {
                         Main.idUsuarioRecebidoPorHTTP = id;
-                        Main.deletarUsuario();
+                        Main.removeUser();
 
                         response = "{\"status\":\"Cadastro deletado com sucesso.\"}";
                         statusCode = 200;

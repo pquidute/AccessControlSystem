@@ -35,8 +35,8 @@ public class Main {
     static ExecutorService executorCadastroIdAcesso = Executors.newSingleThreadExecutor();
 
     public static void main(String[] args) {
-        verificarEstruturaDeDiretorios();
-        carregarDadosDoArquivo();
+        checkDirectoriesStructure();
+        loadData();
         conexaoMQTT = new CLienteMQTT(brokerUrl, topico, Main::processMQTTmessageReceived);
         servidorHTTPS = new ServidorHTTPS();
         mainMenu();
@@ -79,13 +79,13 @@ public class Main {
                     updateUser();
                     break;
                 case 4:
-                    deletarUsuario();
+                    removeUser();
                     break;
                 case 5:
                     waitAccessIdRegister();
                     break;
                 case 6:
-                    apagarRegistrosDeAcesso();
+                    removeAccessRegisters();
                     break;
                 case 7:
                     System.out.println("Fim do programa!");
@@ -156,7 +156,7 @@ public class Main {
                 System.out.println("ID de acesso " + newAccessId + " associado ao usuário " + registersArray.get(i).name);
                 conexaoMQTT.publicarMensagem("cadastro/disp", "CadastroConcluido");
                 found = true;
-                salvarDadosNoArquivo();
+                saveData();
                 break;
             }
         }
@@ -176,7 +176,7 @@ public class Main {
         int menu = scanner.nextInt();
         switch (menu) {
             case 1:
-                exibirRegistrosDeAcesso();
+                showAccessRegister();
                 break;
             case 2:
                 break;
@@ -254,76 +254,108 @@ public class Main {
             System.out.println("Usuário não encontrado!");
         }
     }
-    public static void deletarUsuario() {
-        String[][] novaMatriz = new String[matrizCadastro.length - 1][matrizCadastro[0].length];
-        int idUsuario = idUsuarioRecebidoPorHTTP;
+    public static void removeUser() {
+        int userID = idUsuarioRecebidoPorHTTP;
         if (idUsuarioRecebidoPorHTTP == 0) {
             displayRegisters();
             System.out.println("Escolha um id para deletar o cadastro:");
-            idUsuario = scanner.nextInt();
+            userID = scanner.nextInt();
             scanner.nextLine();
         }
-
-        for (int i = 1, j = 1; i < matrizCadastro.length; i++) {
-            if (i == idUsuario)
-                continue;
-            novaMatriz[j] = matrizCadastro[i];
-            novaMatriz[j][0] = String.valueOf(j);
-            j++;
+        for (int i = 0; i < registersArray.size(); i++) {
+            if (registersArray.get(i).ID == userID){
+                registersArray.remove(i);
+                saveData();
+                System.out.println("-----------------------Deletado com sucesso------------------------\n");
+                break;
+            }
         }
-
-        matrizCadastro = novaMatriz;
-        matrizCadastro[0] = cabecalho;
-        salvarDadosNoArquivo();
-        System.out.println("-----------------------Deletado com sucesso------------------------\n");
+        System.out.println("Usuário não encontrado");
         idUsuarioRecebidoPorHTTP = 0;
     }
 
-    private static void carregarDadosDoArquivo() {
+    private static void loadData() {
+        try (BufferedReader reader = new BufferedReader(new FileReader(database))) {
+            String line;
+            reader.readLine();
+            while ((line = reader.readLine()) != null) {
+                String[] data = line.split(",");
+                if (data.length >= 7) {
+                    int id = Integer.parseInt(data[0]);
+                    String name = data[1];
+                    String email = data[2];
+                    String phoneNumber = data[3];
+                    String image = data[4];
+                    int delays = Integer.parseInt(data[5]);
+                    int accessId = Integer.parseInt(data[6]);
 
-        try (BufferedReader reader = new BufferedReader(new FileReader(arquivoBancoDeDados))) {
-            String linha;
-            StringBuilder conteudo = new StringBuilder();
+                    Register register = new Register(id, name, phoneNumber, email);
 
-            while ((linha = reader.readLine()) != null) {
-                if (!linha.trim().isEmpty()) {
-                    conteudo.append(linha).append("\n");
+                    try (BufferedReader reader2 = new BufferedReader(new FileReader(accessRegistersDatabase))) {
+                        String line2;
+                        while ((line2 = reader2.readLine()) != null) {
+                            String[] parts = line2.split(",", 3);
+                            if (parts.length == 3) {
+                                int accessId2 = Integer.parseInt(parts[0]);
+                                if (accessId == accessId2) {
+                                    String[] accesses = parts[1].split(";");
+                                    String delays2 = parts[2];
+                                    accessRegister accessRegister = new accessRegister(accessId2);
+                                    for (String access : accesses) {
+                                        accessRegister.accessesArray.add(access);
+                                    }
+                                    accessRegister.delays = delays2;
+                                    register.accessRegister = accessRegister;
+                                }
+                            }
+                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException("Erro ao ler dados de registros de acesso: " + e.getMessage(), e);
+                    }
+                } else {
+                    System.err.println("Erro: Linha com número insuficiente de campos: " + line);
                 }
             }
-
-            if (!conteudo.toString().trim().isEmpty()) {
-                String[] linhasDaTabela = conteudo.toString().split("\n");
-                matrizCadastro = new String[linhasDaTabela.length][cabecalho.length];
-                for (int i = 0; i < linhasDaTabela.length; i++) {
-                    matrizCadastro[i] = linhasDaTabela[i].split(",");
-                }
-            }
-
         } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        matrizCadastro[0] = cabecalho;
-    }
-
-    public static void salvarDadosNoArquivo() {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(arquivoBancoDeDados))) {
-            for (String[] linha : matrizCadastro) {
-                writer.write(String.join(",", linha) + "\n");
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(databaseRegistrosDeAcesso))) {
-            for (String[] linha : matrizRegistrosDeAcesso) {
-                writer.write(String.join(",", linha) + "\n");
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Erro ao ler os dados de cadastros: " + e.getMessage(), e);
         }
     }
+    public static void saveData() {
+        //save registers data
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(database))) {
+            for (Register register : registersArray) {
+                StringBuilder line = new StringBuilder();
+                line.append(register.ID).append(",");
+                line.append(register.name).append(",");
+                line.append(register.email).append(",");
+                line.append(register.phoneNumber).append(",");
+                line.append(register.image).append(",");
+                line.append(register.accessRegister.delays).append(",");
+                line.append(register.accessRegister.accessId).append(",");
+                writer.write(line.toString());
+                writer.newLine();
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Erro ao salvar dados de cadastros: " + e.getMessage(), e);
+        }
+        //save access registers data
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(accessRegistersDatabase))) {
+            for (accessRegister accessRegister : accessRegistersArray) {
+                StringBuilder line = new StringBuilder();
+                line.append(accessRegister.accessId).append(",");
+                line.append(accessRegister.delays).append(",");
+                String accesses = String.join(";", accessRegister.accessesArray);
+                line.append(accesses).append(",");
 
-    private static void verificarEstruturaDeDiretorios() {
-        // Verifica se a pasta ControleDeAcesso existe, caso contrário, cria
+                writer.write(line.toString());
+                writer.newLine();
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Erro ao salvar dados de registro de acesso: " + e.getMessage(), e);
+        }
+
+    }
+    private static void checkDirectoriesStructure() {
         if (!pastaControleDeAcesso.exists()) {
             if (pastaControleDeAcesso.mkdir()) {
                 System.out.println("Pasta ControleDeAcesso criada com sucesso.");
@@ -331,50 +363,48 @@ public class Main {
                 System.out.println("Falha ao criar a pasta ControleDeAcesso.");
             }
         }
-
-        // Verifica se o arquivo bancoDeDados.txt existe, caso contrário, cria
-        if (!arquivoBancoDeDados.exists()) {
+        if (!database.exists()) {
             try {
-                if (arquivoBancoDeDados.createNewFile()) {
-                    System.out.println("Arquivo bancoDeDados.txt criado com sucesso.");
+                if (database.createNewFile()) {
+                    System.out.println("Arquivo database.txt criado com sucesso.");
                 } else {
-                    System.out.println("Falha ao criar o arquivo bancoDeDados.txt.");
+                    System.out.println("Falha ao criar o arquivo database.txt.");
                 }
             } catch (IOException e) {
-                System.out.println("Erro ao criar arquivo bancoDeDados.txt: " + e.getMessage());
+                System.out.println("Erro ao criar arquivo database.txt: " + e.getMessage());
             }
         }
-
-        if (!databaseRegistrosDeAcesso.exists()) {
+        if (!accessRegistersDatabase.exists()) {
             try {
-                if (databaseRegistrosDeAcesso.createNewFile()) {
-                    System.out.println("Arquivo registrosDeAcesso.txt criado com sucesso.");
+                if (accessRegistersDatabase.createNewFile()) {
+                    System.out.println("Arquivo accessRegistersDatabase.txt criado com sucesso.");
                 } else {
-                    System.out.println("Falha ao criar o arquivo registrosDeAcesso.txt.");
+                    System.out.println("Falha ao criar o arquivo accessRegistersDatabase.txt.");
                 }
             } catch (IOException e) {
-                System.out.println("Erro ao criar arquivo registrosDeAcesso.txt: " + e.getMessage());
+                System.out.println("Erro ao criar arquivo accessRegistersDatabase.txt: " + e.getMessage());
             }
         }
-
-        // Verifica se a pasta imagens existe, caso contrário, cria
-        if (!pastaImagens.exists()) {
-            if (pastaImagens.mkdir()) {
-                System.out.println("Pasta imagens criada com sucesso.");
+        if (!imagesFolder.exists()) {
+            if (imagesFolder.mkdir()) {
+                System.out.println("Pasta imagesFolder criada com sucesso.");
             } else {
-                System.out.println("Falha ao criar a pasta imagens.");
+                System.out.println("Falha ao criar a pasta imagesFolder.");
             }
         }
     }
 
-    private static void apagarRegistrosDeAcesso() {
+    private static void removeAccessRegisters() {
         System.out.println("---REMOÇÃO DE REGISTROS DE ACESSO---");
         System.out.println("Tem certeza que deseja apagar TODOS os registros de acesso?\n1. Sim\n2. Não");
         int menu = scanner.nextInt();
         switch (menu) {
             case 1:
-                String[][] novaMatriz = new String[][]{{"ID", "DATA", "HORA"}};
-                matrizRegistrosDeAcesso = novaMatriz;
+                for (int i = 0; i < registersArray.size(); i++) {
+                    registersArray.get(i).accessRegister.accessesArray.clear();
+                    registersArray.get(i).accessRegister.delays = String.valueOf(0);
+                }
+                System.out.println("Registros de acesso apagados com sucesso!");
                 break;
             case 2:
                 break;
@@ -384,12 +414,13 @@ public class Main {
         }
     }
 
-    private static void exibirRegistrosDeAcesso() {
-        if (arrayRegisters.isEmpty()) {
+    private static void showAccessRegister() {
+        if (accessRegistersArray.isEmpty()) {
             System.out.println("Não há registros de acesso no sistema!");
             return;
         }
-        for (int i = 0; i < arrayAccessRegisters.size(); i++) {
-            System.out.println(arrayAccessRegisters.get(i).toString());
+        for (int i = 0; i < accessRegistersArray.size(); i++) {
+
         }
     }
+}
