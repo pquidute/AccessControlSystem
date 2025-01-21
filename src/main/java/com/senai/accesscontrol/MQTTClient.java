@@ -1,4 +1,4 @@
-package com.senai.controledeacesso;
+package com.senai.accesscontrol;
 
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
@@ -6,14 +6,14 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
-public class CLienteMQTT {
+public class MQTTClient {
 
-    private MqttClient cliente;
+    private org.eclipse.paho.client.mqttv3.MqttClient cliente;
     private final String brokerUrl;
     private String topicoAtual;
     private MensagemListener listenerAtual;
 
-    public CLienteMQTT(String brokerUrl, String topico, MensagemListener listener) {
+    public MQTTClient(String brokerUrl, String topico, MensagemListener listener) {
         this.brokerUrl = brokerUrl;
         this.topicoAtual = topico;
         this.listenerAtual = listener;
@@ -23,9 +23,9 @@ public class CLienteMQTT {
         }
     }
 
-    private MqttClient conectar() {
+    private org.eclipse.paho.client.mqttv3.MqttClient conectar() {
         try {
-            MqttClient cliente = new MqttClient(brokerUrl, MqttClient.generateClientId(), new MemoryPersistence());
+            org.eclipse.paho.client.mqttv3.MqttClient cliente = new org.eclipse.paho.client.mqttv3.MqttClient(brokerUrl, org.eclipse.paho.client.mqttv3.MqttClient.generateClientId(), new MemoryPersistence());
             MqttConnectOptions options = new MqttConnectOptions();
             options.setCleanSession(true);
             options.setAutomaticReconnect(true);
@@ -45,7 +45,7 @@ public class CLienteMQTT {
         }
     }
 
-    private void configurarCallback(MqttClient cliente) {
+    private void configurarCallback(org.eclipse.paho.client.mqttv3.MqttClient cliente) {
         cliente.setCallback(new MqttCallback() {
             @Override
             public void connectionLost(Throwable cause) {

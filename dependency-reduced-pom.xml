@@ -21,7 +21,7 @@
           <archive>
             <manifest>
               <addClasspath>true</addClasspath>
-              <mainClass>com.senai.controledeacesso.Main</mainClass>
+              <mainClass>com.senai.accesscontrol.Main</mainClass>
             </manifest>
             <manifestEntries>
               <Class-Path>.</Class-Path>
@@ -76,7 +76,7 @@
             <configuration>
               <archive>
                 <manifest>
-                  <mainClass>com.senai.controledeacesso.Main</mainClass>
+                  <mainClass>com.senai.accesscontrol.Main</mainClass>
                 </manifest>
                 <manifestEntries>
                   <Class-Path>.</Class-Path>

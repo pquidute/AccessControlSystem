@@ -1,4 +1,4 @@
-package com.senai.controledeacesso;
+package com.senai.accesscontrol;
 
 import com.sun.net.httpserver.*;
 import org.json.JSONArray;
@@ -15,26 +15,26 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.KeyStore;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.stream.Collectors;
 
-public class ServidorHTTPS {
+public class HTTPSServer {
 
     private HttpsServer server;
 
-    public ServidorHTTPS() {
-        iniciarServidorHTTPS();
+    public HTTPSServer() {
+        startHttpsServer();
     }
 
-    public void iniciarServidorHTTPS() {
+    public void startHttpsServer() {
         try {
             System.out.println("Iniciando o servidor HTTPS...");
 
-            // Configuração do SSLContext
+            // SSL Context Config
             SSLContext sslContext = SSLContext.getInstance("TLS");
 
-            // Configuração do Keystore
+            // Keystore Config
             char[] password = "1234abcd".toCharArray();  // Defina a senha do seu keystore
             KeyStore ks = KeyStore.getInstance("JKS");
             InputStream inputStream = getClass().getClassLoader().getResourceAsStream("security/keystoreSenai.jks");
@@ -52,7 +52,7 @@ public class ServidorHTTPS {
 
             sslContext.init(keyManagerFactory.getKeyManagers(), null, null);
 
-            // Configuração do HttpsServer com endereço "0.0.0.0" para permitir acesso externo
+            // HttpsServer configuration with address "0.0.0.0" to allow external access
             server = HttpsServer.create(new InetSocketAddress("0.0.0.0", 8000), 0);
             server.setHttpsConfigurator(new HttpsConfigurator(sslContext) {
                 public void configure(HttpsParameters params) {
@@ -72,10 +72,10 @@ public class ServidorHTTPS {
                 }
             });
 
-            // Configurar Handlers para rotas
+            // Configure Handlers to routes
             server.createContext("/", new HomeHandler());
             server.createContext("/server-ip", new ServerIpHandler());
-            server.createContext("/atualizacao", new AtualizacaoHandler());
+            server.createContext("/atualizacao", new updateHandler());
             server.createContext("/cadastros", new CadastroListHandler());
             server.createContext("/cadastro", new CadastroHandler());
             server.createContext("/iniciarRegistroTag", new IniciarRegistroTagHandler());
@@ -86,7 +86,7 @@ public class ServidorHTTPS {
             server.createContext("/imagens/deletar/", new ImagemDeleteHandler());
 
 
-            server.setExecutor(null); // Sem thread pool personalizado
+            server.setExecutor(null); // Without personalized thread pool
             server.start();
             System.out.println("Servidor HTTPS iniciado na porta 8000 e acessível em todas as interfaces de rede.");
 
@@ -97,40 +97,40 @@ public class ServidorHTTPS {
         }
     }
 
-    // Método para parar o servidor
-    public void pararServidorHTTPS() {
+    // Method to stop server
+    public void stopHTTPSServer() {
         if (server != null) {
             server.stop(0);
             System.out.println("Servidor HTTP parado.");
         }
     }
 
-    // Handler para servir arquivos HTML, CSS e JS do diretório especificado
+    // Handler to serve HTML, CSS & JS files from the specified directory
     private class HomeHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             System.out.println("Requisição recebida na rota: " + exchange.getRequestURI().getPath());
 
-            String caminhoRequisitado = exchange.getRequestURI().getPath();
+            String requestedPath = exchange.getRequestURI().getPath();
 
-            // Caminho relativo para a pasta webapp
-            String caminhoRelativoWebapp = "webapp";
-            String caminhoArquivoRequisitado;
+            // Relative path to webapp folder
+            String relativeWebappPath = "webapp";
+            String requestedFilePath;
 
-            if ("/".equals(caminhoRequisitado) || caminhoRequisitado.startsWith("/index.html")) {
-                caminhoArquivoRequisitado = caminhoRelativoWebapp + "/index.html";
+            if ("/".equals(requestedPath) || requestedPath.startsWith("/index.html")) {
+                requestedFilePath = relativeWebappPath + "/index.html";
             } else {
-                caminhoArquivoRequisitado = caminhoRelativoWebapp + caminhoRequisitado;
+                requestedFilePath = relativeWebappPath + requestedPath;
             }
 
-            // Tentativa de carregar o arquivo como um recurso de dentro do JAR
-            InputStream inputStream = getClass().getClassLoader().getResourceAsStream(caminhoArquivoRequisitado);
+            // Tria to load the file as a resource inside JAR
+            InputStream inputStream = getClass().getClassLoader().getResourceAsStream(requestedFilePath);
 
             if (inputStream == null) {
                 System.out.println("Arquivo não encontrado no classpath. Tentando carregar do sistema de arquivos.");
 
-                // Caminho alternativo para o sistema de arquivos para ambiente de desenvolvimento
-                File arquivoLocal = new File("src/main/" + caminhoArquivoRequisitado);
+                // Alternative path to the files system for the development environment
+                File arquivoLocal = new File("src/main/" + requestedFilePath);
                 if (arquivoLocal.exists() && arquivoLocal.isFile()) {
                     inputStream = new FileInputStream(arquivoLocal);
                     System.out.println("Arquivo encontrado no sistema de arquivos: " + arquivoLocal.getPath());
@@ -139,7 +139,7 @@ public class ServidorHTTPS {
 
             if (inputStream == null) {
                 System.out.println("Arquivo não encontrado, retornando página 404.");
-                // Página não encontrada, serve uma página HTML de erro
+                // "Page not found" (Serves a HTML error page)
                 String html404 = """
                         <html>
                             <head>
@@ -162,12 +162,12 @@ public class ServidorHTTPS {
                     os.write(bytesResposta);
                 }
             } else {
-                // Lê o conteúdo do arquivo encontrado e envia a resposta
+                // Reads the content of the file and sends a response
                 byte[] bytesResposta = inputStream.readAllBytes();
                 inputStream.close();
 
-                // Determina o tipo MIME com base na extensão do arquivo
-                String mimeType = Files.probeContentType(Paths.get(caminhoArquivoRequisitado));
+                // Sets the MIME type based on the file extension
+                String mimeType = Files.probeContentType(Paths.get(requestedFilePath));
                 exchange.getResponseHeaders().set("Content-Type", mimeType != null ? mimeType : "application/octet-stream");
                 exchange.sendResponseHeaders(200, bytesResposta.length);
                 try (OutputStream os = exchange.getResponseBody()) {
@@ -178,7 +178,7 @@ public class ServidorHTTPS {
         }
     }
 
-    // Handler para fornecer o IP do servidor ao frontend
+    // Handler to provide the server IP to frontend
     private class ServerIpHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -195,18 +195,32 @@ public class ServidorHTTPS {
         }
     }
 
-    // Handler para a rota "/atualizacao"
-    private class AtualizacaoHandler implements HttpHandler {
+    // Handler to the route "/atualizacao"
+    private class updateHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             exchange.getResponseHeaders().set("Content-Type", "application/json");
-            String jsonResponse = Main.matrizRegistrosDeAcesso.length == 0
+
+            // Access Main.arrayStudents
+            String jsonResponse = Main.registersArray.isEmpty()
                     ? "[]"
                     : "[" +
-                    Arrays.stream(Main.matrizRegistrosDeAcesso)
-                            .map(registro -> String.format("{\"nome\":\"%s\",\"horario\":\"%s\",\"imagem\":\"%s\"}", registro[0], registro[1], registro[2]))
+                    Main.registersArray.stream()
+                            .map(student -> {
+                                String delaysJson = student.arrayDelays.stream()
+                                        .map(delay -> String.format("\"%s\"", delay))
+                                        .collect(Collectors.joining(","));
+                                return String.format(
+                                        "{\"student\":\"%s\",\"classroom\":\"%s\",\"delays\":[%s]}",
+                                        student.user.toString(),
+                                        student.classroom,
+                                        delaysJson
+                                );
+                            })
                             .collect(Collectors.joining(",")) +
                     "]";
+
+            // Send response
             byte[] bytesResposta = jsonResponse.getBytes();
             exchange.sendResponseHeaders(200, bytesResposta.length);
             OutputStream os = exchange.getResponseBody();
@@ -221,29 +235,28 @@ public class ServidorHTTPS {
         public void handle(HttpExchange exchange) throws IOException {
             JSONArray jsonArray = new JSONArray();
 
-            // Percorre a matrizCadastro a partir da segunda linha (ignora cabeçalho)
-            for (int i = 1; i < Main.matrizCadastro.length; i++) {
-                String[] registro = Main.matrizCadastro[i];
-                if (registro != null) { // Verifica se a linha está preenchida
+            // Loop through the ArrayList instead of the array
+            for (Student student : Main.arrayStudents) {
+                if (student != null) { // Verify that the student is not null
                     JSONObject json = new JSONObject();
-                    json.put("id", registro[0]);
-                    json.put("idAcesso", (registro[1] != null && !registro[1].isEmpty()) ? registro[1] : "-");
-                    json.put("nome", registro[2]);
-                    json.put("telefone", registro[3]);
-                    json.put("email", registro[4]);
-                    json.put("imagem", registro[5] != null ? registro[5] : "-");
+                    json.put("id", student.accessId); // Replace with the actual ID attribute
+                    json.put("idAcesso", student.accessId > 0 ? String.valueOf(student.accessId) : "-");
+                    json.put("nome", student.user.toString()); // Assuming user has a proper `toString` method
+                    json.put("imagem", !student.arrayDelays.isEmpty() ? "Has Delays" : "-");   // Placeholder logic for image
 
                     jsonArray.put(json);
                 }
             }
 
-            // Envia a resposta como JSON
+            // Send response as JSON
             byte[] response = jsonArray.toString().getBytes();
             exchange.sendResponseHeaders(200, response.length);
-            exchange.getResponseBody().write(response);
-            exchange.close();
+            OutputStream os = exchange.getResponseBody();
+            os.write(response);
+            os.close();
         }
     }
+
 
 
     // Handler para cadastrar um novo usuário
@@ -252,6 +265,8 @@ public class ServidorHTTPS {
         public void handle(HttpExchange exchange) throws IOException {
             if ("POST".equals(exchange.getRequestMethod())) {
                 exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+
+                // Read request body
                 InputStreamReader inputStreamReader = new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8);
                 BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                 StringBuilder corpoDaRequisicao = new StringBuilder();
@@ -260,51 +275,57 @@ public class ServidorHTTPS {
                     corpoDaRequisicao.append(linha);
                 }
 
-                // Gera novo ID e cria o registro
-                int novoID = Main.matrizCadastro.length;
-
+                // Parse JSON from the request
                 JSONObject json = new JSONObject(corpoDaRequisicao.toString());
                 String nome = json.getString("nome");
-                String telefone = json.getString("telefone");
-                String email = json.getString("email");
-                String nomeImagem = novoID + nome;
+                String identifier = json.getString("número de matrícula");
+                String password = json.getString("senha");
+                String imagem = json.getString("imagem");
+                String nomeImagem = imagem.equals("-") ? "-" : "img_" + Main.arrayStudents.size();
 
-                if(!json.getString("imagem").equals("-")) {
-                    salvarImagem(json.getString("imagem"), nomeImagem);
-                }else {
-                    nomeImagem = "-";
-                }
-                //Logs
-                System.out.println("nome : " + nome + " | telefone : " + telefone + " | email : " + email);
-
-                String[] novoUsuario = {String.valueOf(novoID), "-", nome, telefone, email, nomeImagem};
-                String[][] novaMatriz = new String[novoID + 1][novoUsuario[0].length()];
-
-                for (int linhas = 0; linhas < Main.matrizCadastro.length; linhas++) {
-                    novaMatriz[linhas] = Arrays.copyOf(Main.matrizCadastro[linhas], Main.matrizCadastro[linhas].length);
+                // Save image if provided
+                if (!imagem.equals("-")) {
+                    salvarImagem(imagem, nomeImagem);
                 }
 
-                novaMatriz[novoID] = novoUsuario;
-                Main.matrizCadastro = novaMatriz;
-                Main.saveData();
+                // Logs
+                System.out.println("nome: " + nome + " | " + "número de matrícula: " + identifier);
 
+                // Create User and Student objects
+                User newUser = new User(nome, identifier, password);
+                newUser.identifier = identifier;
+
+                Student newStudent = new Student(newUser, "DefaultClass", 0000); // Use appropriate class assignment
+                newStudent.accessId = Main.arrayStudents.size(); // Set unique access ID
+                newStudent.arrayDelays = new ArrayList<>(); // Initialize the delays list
+
+                // Add new student to the ArrayList
+                Main.arrayStudents.add(newStudent);
+
+                // Persist changes (if needed, implement Main.salvarDados() for ArrayList)
+                Main.salvarDados();
+
+                // Send response
                 String responseMessage = "Cadastro recebido com sucesso!";
                 exchange.sendResponseHeaders(200, responseMessage.length());
                 exchange.getResponseBody().write(responseMessage.getBytes());
                 exchange.close();
             } else {
-                exchange.sendResponseHeaders(405, -1); // Método não permitido
+                exchange.sendResponseHeaders(405, -1); // Method not allowed
             }
         }
     }
+
 
 
     // Handler para atualizar um cadastro existente (PUT)
     private class UpdateCadastroHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            if ("PUT".equals(exchange.getRequestMethod())) {  // Mudando PATCH para PUT
+            if ("PUT".equals(exchange.getRequestMethod())) {
                 exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+
+                // Read request body
                 BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8));
                 StringBuilder corpoDaRequisicao = new StringBuilder();
                 String linha;
@@ -313,68 +334,71 @@ public class ServidorHTTPS {
                 }
                 JSONObject json = new JSONObject(corpoDaRequisicao.toString());
 
+                // Extract ID from the URI path
                 String path = exchange.getRequestURI().getPath();
                 String[] parts = path.split("/");
                 int id = Integer.parseInt(parts[parts.length - 1]);
-                System.out.println("id:" + id);
+                System.out.println("id: " + id);
 
-                // Verifica se o ID é válido e se o cadastro existe
-                if (id > 0) {
+                // Check if the ID is valid
+                if (id >= 0 && id < Main.arrayStudents.size()) {
+                    // Retrieve the existing Student object
+                    Student student = Main.arrayStudents.get(id);
 
-                    // Obtenha os dados do cadastro atual para substituir
-                    String[] registro = new String[6];  // Criar um novo registro para garantir que o PUT substitua completamente
-                    registro[0] = String.valueOf(id);   // ID do cadastro
-                    // Substitui os dados fornecidos no corpo da requisição
-                    registro[1] = json.has("idAcesso") ? json.getString("idAcesso") : "-";
-                    registro[2] = json.has("nome") ? json.getString("nome") : "";  // Verifica se o nome foi enviado
-                    registro[3] = json.has("telefone") ? json.getString("telefone") : "";  // Verifica se o telefone foi enviado
-                    registro[4] = json.has("email") ? json.getString("email") : "";  // Verifica se o email foi enviado
-                    // Verifica se a imagem foi enviada
+                    // Update fields if present in the JSON body
+                    if (json.has("nome")) {
+                        student.user.name = json.getString("nome");
+                    }
+                    if (json.has("número de matrícula")) {
+                        student.user.identifier = json.getString("número de matrícula");
+                    }
+
+                    // Update or save the image if provided
                     String nomeImagem = json.has("nomeImagem") ? json.getString("nomeImagem") : "-";
                     if (json.has("imagem") && !json.getString("imagem").equals("-")) {
-                        salvarImagem(json.getString("imagem"),id+registro[2] );
-                        registro[5] = id+registro[2];
-                    } else {
-                        registro[5] = Main.matrizCadastro[id][2].equals(registro[2])
-                                ? Main.matrizCadastro[id][5]
-                                : nomeImagem;
+                        salvarImagem(json.getString("imagem"), id + student.user.name);
+                        student.user.imagePath = id + student.user.name + ".png";
+                    } else if (!student.user.name.equals(json.optString("nome", student.user.name))) {
+                        student.user.imagePath = nomeImagem;
                     }
-                    //Logs
-                    System.out.println("Edição: nome : " + registro[2] + " | telefone : " + registro[3] + " | email : " + registro[4]);
 
-                    // Substitui o cadastro na matriz com os novos dados
-                    Main.matrizCadastro[id] = registro;
+                    // Logs
+                    System.out.println("Edição: nome: " + student.user.name +
+                            " | número de matrícula: " + student.user.identifier);
 
-                    Main.saveData();
+                    // Persist changes (if needed, implement Main.salvarDados for ArrayList)
+                    Main.salvarDados();
 
-                    // Resposta de sucesso
+                    // Send success response
                     String response = "{\"status\":\"Cadastro atualizado com sucesso.\"}";
                     byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
                     exchange.sendResponseHeaders(200, responseBytes.length);
                     exchange.getResponseBody().write(responseBytes);
                 } else {
-                    System.out.println("não encontrado");
-                    // Resposta de erro caso o ID não exista
+                    System.out.println("ID não encontrado");
+                    // Send error response if the ID does not exist
                     String response = "{\"status\":\"ID não encontrado.\"}";
                     byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
                     exchange.sendResponseHeaders(404, responseBytes.length);
                     exchange.getResponseBody().write(responseBytes);
                 }
             } else {
-                exchange.sendResponseHeaders(405, -1); // Método não permitido
+                exchange.sendResponseHeaders(405, -1); // Method not allowed
             }
             exchange.close();
         }
     }
 
+    // Helper method to save the image
     private void salvarImagem(String imagemBase64, String nomeImagem) throws IOException {
         byte[] dados = Base64.getDecoder().decode(imagemBase64);
-        // Caminho completo para salvar a imagem
+        // Complete path to save the image
         File arquivoNovaImagem = new File(Main.pastaImagens, nomeImagem + ".png");
         try (FileOutputStream fileOutputStream = new FileOutputStream(arquivoNovaImagem)) {
             fileOutputStream.write(dados);
         }
     }
+
     // Handler para deletar um cadastro existente (DELETE)
     private class DeleteCadastroHandler implements HttpHandler {
         @Override
@@ -389,15 +413,18 @@ public class ServidorHTTPS {
                 int statusCode;
 
                 try {
+                    // Extrai o ID da URI
                     String idPath = exchange.getRequestURI().getPath().replaceFirst("/cadastro/deletar/", "").trim();
                     System.out.println("ID extraído da URI: " + idPath);
 
                     int id = Integer.parseInt(idPath);
                     System.out.println("ID convertido para inteiro: " + id);
 
-                    if (id > 0 && id < Main.matrizCadastro.length && Main.matrizCadastro[id] != null) {
+                    // Verifica se o ID é válido e existe na lista
+                    if (id >= 0 && id < Main.arrayStudents.size() && Main.arrayStudents.get(id) != null) {
+                        // Deleta o usuário da lista
                         Main.idUsuarioRecebidoPorHTTP = id;
-                        Main.removeUser();
+                        Main.deletarUsuario(2);
 
                         response = "{\"status\":\"Cadastro deletado com sucesso.\"}";
                         statusCode = 200;
@@ -413,7 +440,7 @@ public class ServidorHTTPS {
                     System.err.println("Erro ao converter o ID para número: " + e.getMessage());
                 }
 
-                // Envia resposta
+                // Envia a resposta
                 byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(statusCode, responseBytes.length);
                 exchange.getResponseBody().write(responseBytes);
@@ -427,8 +454,6 @@ public class ServidorHTTPS {
         }
     }
 
-
-
     // Classe para lidar com requisições de imagens
     private class ImagemHandler implements HttpHandler {
         @Override
@@ -437,41 +462,50 @@ public class ServidorHTTPS {
             System.out.println("Iniciando processamento no ImagemHandler");
 
             // Recupera o caminho completo da imagem solicitado pela URI
-            String imagePath = Main.pastaImagens.getAbsolutePath() +"\\"+
-                    exchange.getRequestURI().getPath().replace("/imagens/", "")+".png";
-            System.out.println("Caminho completo da imagem requisitada: " + imagePath);
+            String imagePath = exchange.getRequestURI().getPath().replace("/imagens/", "") + ".png";
+            System.out.println("Caminho da imagem requisitada: " + imagePath);
 
-            File imageFile = new File(imagePath);
+            // Verifica se a imagem está na lista de imagens
+            if (Main.arrayListImagens.contains(imagePath)) {
+                String fullImagePath = Main.pastaImagens.getAbsolutePath() + "\\" + imagePath;
+                File imageFile = new File(fullImagePath);
 
-            // Verifica se o arquivo da imagem existe e não é um diretório
-            if (imageFile.exists() && !imageFile.isDirectory()) {
-                // Define o tipo de conteúdo com base no tipo da imagem e ajusta o cabeçalho
-                String contentType = Files.probeContentType(Paths.get(imagePath));
-                exchange.getResponseHeaders().set("Content-Type", contentType);
-                System.out.println("Tipo de conteúdo da imagem: " + contentType);
+                // Verifica se o arquivo da imagem existe e não é um diretório
+                if (imageFile.exists() && !imageFile.isDirectory()) {
+                    // Define o tipo de conteúdo com base no tipo da imagem e ajusta o cabeçalho
+                    String contentType = Files.probeContentType(Paths.get(fullImagePath));
+                    exchange.getResponseHeaders().set("Content-Type", contentType);
+                    System.out.println("Tipo de conteúdo da imagem: " + contentType);
 
-                // Configura o cabeçalho da resposta com o código 200 e o tamanho da imagem
-                exchange.sendResponseHeaders(200, imageFile.length());
-                System.out.println("Imagem encontrada. Enviando resposta com código 200 e tamanho: " + imageFile.length());
+                    // Configura o cabeçalho da resposta com o código 200 e o tamanho da imagem
+                    exchange.sendResponseHeaders(200, imageFile.length());
+                    System.out.println("Imagem encontrada. Enviando resposta com código 200 e tamanho: " + imageFile.length());
 
-                // Envia a imagem para o cliente
-                try (OutputStream os = exchange.getResponseBody();
-                     FileInputStream fs = new FileInputStream(imageFile)) {
-                    fs.transferTo(os);
-                    System.out.println("Imagem enviada ao cliente com sucesso.");
-                } catch (IOException e) {
-                    System.err.println("Erro ao enviar a imagem ao cliente: " + e.getMessage());
+                    // Envia a imagem para o cliente
+                    try (OutputStream os = exchange.getResponseBody();
+                         FileInputStream fs = new FileInputStream(imageFile)) {
+                        fs.transferTo(os);
+                        System.out.println("Imagem enviada ao cliente com sucesso.");
+                    } catch (IOException e) {
+                        System.err.println("Erro ao enviar a imagem ao cliente: " + e.getMessage());
+                    }
+                } else {
+                    // Caso a imagem não seja encontrada, envia o código 404
+                    System.out.println("Imagem não encontrada. Enviando resposta 404.");
+                    exchange.sendResponseHeaders(404, -1);
                 }
             } else {
-                // Caso a imagem não seja encontrada, envia o código 404
-                System.out.println("Imagem não encontrada. Enviando resposta 404.");
+                // Se o caminho da imagem não estiver na lista, envia 404
+                System.out.println("Imagem não encontrada na lista. Enviando resposta 404.");
                 exchange.sendResponseHeaders(404, -1);
             }
+
             // Fecha o canal de resposta
             exchange.close();
             System.out.println("Processamento da requisição encerrado.");
         }
     }
+
 
     public class ImagemDeleteHandler implements HttpHandler {
         @Override
@@ -565,14 +599,34 @@ public class ServidorHTTPS {
     private class VerificarStatusTagHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            // Recupera o ID do usuário a partir da URI
             int usuarioId = Integer.parseInt(exchange.getRequestURI().getPath().split("/")[2]);
-            String status = Main.matrizCadastro[usuarioId][1].equals("-") ? "aguardando" : "sucesso";
 
-            String response = "{\"status\":\"" + status + "\"}";
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, response.length());
-            exchange.getResponseBody().write(response.getBytes());
+            // Verifica se o usuário existe na lista
+            if (usuarioId >= 0 && usuarioId < Main.arrayStudents.size()) {
+                // Obtém o registro do usuário com base no ID
+                Student usuario = Main.arrayStudents.get(usuarioId);
+
+                // Verifica o status, assumindo que a lógica de status seja baseada no campo idAcesso
+                String status = usuario.arrayDelays().isEmpty() ? "aguardando" : "sucesso";
+
+                // Prepara a resposta JSON
+                String response = "{\"status\":\"" + status + "\"}";
+
+                // Define o cabeçalho de resposta e envia os dados
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, response.length());
+                exchange.getResponseBody().write(response.getBytes());
+            } else {
+                // Caso o ID não exista na lista, envia 404
+                String response = "{\"status\":\"ID não encontrado\"}";
+                exchange.sendResponseHeaders(404, response.length());
+                exchange.getResponseBody().write(response.getBytes());
+            }
+
+            // Fecha a resposta
             exchange.close();
         }
     }
+
 }

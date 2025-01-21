@@ -1,4 +1,4 @@
-package com.senai.controledeacesso;
+package com.senai.accesscontrol;
 
 public class Register {
     int ID;
@@ -6,7 +6,7 @@ public class Register {
     String phoneNumber;
     String email;
     String image;
-    accessRegister accessRegister;
+    AccessRegister accessRegister;
 
     Register(int ID, String name, String phoneNumber, String email) {
         this.ID = ID;

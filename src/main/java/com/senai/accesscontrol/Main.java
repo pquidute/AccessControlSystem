@@ -1,4 +1,4 @@
-package com.senai.controledeacesso;
+package com.senai.accesscontrol;
 
 import java.io.*;
 import java.time.LocalDateTime;
@@ -10,46 +10,46 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 public class Main {
-    private static final File pastaControleDeAcesso = new File(System.getProperty("user.home"), "ControleDeAcesso");
+    private static final File accessControlFolder = new File(System.getProperty("user.home"), "ControleDeAcesso");
 
-    private static final File database = new File(pastaControleDeAcesso, "database.txt");
-    private static final File accessRegistersDatabase = new File(pastaControleDeAcesso, "accessRegistersDatabase.txt");
-    public static final File imagesFolder = new File(pastaControleDeAcesso, "images");
+    private static final File database = new File(accessControlFolder, "database.txt");
+    private static final File accessRegistersDatabase = new File(accessControlFolder, "accessRegistersDatabase.txt");
+    public static final File imagesFolder = new File(accessControlFolder, "images");
     static String header = String.format("| %-5s | %-15s | %-20s | %-10s | %-10s | %-6s | %-10s |",
-            "ID", "NOME", "NÚMERO DE TELEFONE", "EMAIL", "IMAGE", "ATRASOS", "ID ACESSO");
+            "ID", "NOME", "NÚMERO DE TELEFONE", "EMAIL", "IMAGEM", "ATRASOS", "ID DE ACESSO");
 
     static ArrayList<Register> registersArray = new ArrayList<>();
-    static ArrayList<accessRegister> accessRegistersArray = new ArrayList<>();
+    static ArrayList<AccessRegister> accessRegistersArray = new ArrayList<>();
 
-    static volatile boolean modoCadastrarIdAcesso = false;
-    static int idUsuarioRecebidoPorHTTP = 0;
-    static String dispositivoRecebidoPorHTTP = "Disp1";
+    static volatile boolean registerAccessIdMode = false;
+    static int userIdReceivedByHTTP = 0;
+    static String deviceReceivedByHTTP = "Disp1";
     static LocalDateTime currentTime = LocalDateTime.parse(LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")));
     static String brokerUrl = "tcp://localhost:1883";  // Exemplo de
-    static String topico = "IoTKIT1/UID";
+    static String topic = "IoTKIT1/UID";
 
-    static CLienteMQTT conexaoMQTT;
-    static ServidorHTTPS servidorHTTPS;
+    static MQTTClient mqttConnection;
+    static HTTPSServer httpsServer;
     static Scanner scanner = new Scanner(System.in);
-    static ExecutorService executorIdentificarAcessos = Executors.newFixedThreadPool(4);
-    static ExecutorService executorCadastroIdAcesso = Executors.newSingleThreadExecutor();
+    static ExecutorService accessIdentifierExecutor = Executors.newFixedThreadPool(4);
+    static ExecutorService accessIdRegisterExecutor = Executors.newSingleThreadExecutor();
 
     public static void main(String[] args) {
         checkDirectoriesStructure();
         loadData();
-        conexaoMQTT = new CLienteMQTT(brokerUrl, topico, Main::processMQTTmessageReceived);
-        servidorHTTPS = new ServidorHTTPS();
+        mqttConnection = new MQTTClient(brokerUrl, topic, Main::processMQTTreceivedMessage);
+        httpsServer = new HTTPSServer();
         mainMenu();
 
         scanner.close();
-        executorIdentificarAcessos.shutdown();
-        executorCadastroIdAcesso.shutdown();
-        conexaoMQTT.desconectar();
-        servidorHTTPS.pararServidorHTTPS();
+        accessIdentifierExecutor.shutdown();
+        accessIdRegisterExecutor.shutdown();
+        mqttConnection.desconectar();
+        httpsServer.stopHTTPSServer();
     }
 
     private static void mainMenu() {
-        int opcao;
+        int option;
         System.out.println("            ------BEM VINDO------          ");
         do {
             String menu = """
@@ -65,10 +65,10 @@ public class Main {
                     _________________________________________________________
                     """;
             System.out.println(menu);
-            opcao = scanner.nextInt();
+            option = scanner.nextInt();
             scanner.nextLine();
 
-            switch (opcao) {
+            switch (option) {
                 case 1:
                     displayRegisters();
                     break;
@@ -94,14 +94,14 @@ public class Main {
                     System.out.println("Opção inválida!");
             }
 
-        } while (opcao != 7);
+        } while (option != 7);
     }
 
     private static void waitAccessIdRegister() {
-        modoCadastrarIdAcesso = true;
+        registerAccessIdMode = true;
         System.out.println("Aguardando nova tag ou cartão para associar ao usuário");
-        Future<?> future = executorCadastroIdAcesso.submit(() -> {
-            while (modoCadastrarIdAcesso) {
+        Future<?> future = accessIdRegisterExecutor.submit(() -> {
+            while (registerAccessIdMode) {
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException e) {
@@ -116,24 +116,24 @@ public class Main {
             System.err.println("Erro ao aguardar cadastro: " + e.getMessage());
         }
     }
-    private static void processMQTTmessageReceived(String message) {
-        if (!modoCadastrarIdAcesso) {
-            executorIdentificarAcessos.submit(() -> createNewAccessRegister(message));
+    private static void processMQTTreceivedMessage(String message) {
+        if (!registerAccessIdMode) {
+            accessIdentifierExecutor.submit(() -> createNewAccessRegister(message));
         } else {
             registerNewAccessId(message);
-            modoCadastrarIdAcesso = false;
-            idUsuarioRecebidoPorHTTP = 0;
+            registerAccessIdMode = false;
+            userIdReceivedByHTTP = 0;
         }
     }
     private static void createNewAccessRegister(String accessIdReceived) {
-        boolean usuarioEncontrado = false;
+        boolean userFound = false;
         for (int i = 0; i < registersArray.size(); i++) {
             if (registersArray.get(i).accessRegister.accessId == Integer.parseInt(accessIdReceived)){
                 registersArray.get(i).accessRegister.registerNewAccess(String.valueOf(currentTime));
-                usuarioEncontrado = true;
+                userFound = true;
                 break;
             }
-            if (!usuarioEncontrado){
+            if (!userFound){
                 System.out.println("O ID de acesso recebido não está associado à nenhum usuário!");
             }
             break;
@@ -141,20 +141,20 @@ public class Main {
     }
     private static void registerNewAccessId(String newAccessId) {
         boolean found = false;
-        String userID= String.valueOf(idUsuarioRecebidoPorHTTP);
-        String chosenDevice = dispositivoRecebidoPorHTTP;
+        String userID= String.valueOf(userIdReceivedByHTTP);
+        String chosenDevice = deviceReceivedByHTTP;
 
-        if (idUsuarioRecebidoPorHTTP == 0) {
+        if (userIdReceivedByHTTP == 0) {
             displayRegisters();
             System.out.print("Digite o ID do usuário para associar ao novo idAcesso: ");
             userID = scanner.nextLine();
-            conexaoMQTT.publicarMensagem(topico, chosenDevice);
+            mqttConnection.publicarMensagem(topic, chosenDevice);
         }
-        modoCadastrarIdAcesso = true;
+        registerAccessIdMode = true;
         for (int i = 0; i < registersArray.size(); i++) {
             if (registersArray.get(i).ID == Integer.parseInt(userID)){
                 System.out.println("ID de acesso " + newAccessId + " associado ao usuário " + registersArray.get(i).name);
-                conexaoMQTT.publicarMensagem("cadastro/disp", "CadastroConcluido");
+                mqttConnection.publicarMensagem("cadastro/disp", "CadastroConcluido");
                 found = true;
                 saveData();
                 break;
@@ -187,10 +187,10 @@ public class Main {
     }
     private static void registerUser() {
         System.out.print("Digite a quantidade de usuarios que deseja cadastrar:");
-        int users = scanner.nextInt();
+        int numberOfUsers = scanner.nextInt();
         scanner.nextLine();
 
-        for (int i = 0; i < users; i++) {
+        for (int i = 0; i < numberOfUsers; i++) {
             System.out.print("ID: ");
             int id = scanner.nextInt();
             scanner.nextLine();
@@ -255,8 +255,8 @@ public class Main {
         }
     }
     public static void removeUser() {
-        int userID = idUsuarioRecebidoPorHTTP;
-        if (idUsuarioRecebidoPorHTTP == 0) {
+        int userID = userIdReceivedByHTTP;
+        if (userIdReceivedByHTTP == 0) {
             displayRegisters();
             System.out.println("Escolha um id para deletar o cadastro:");
             userID = scanner.nextInt();
@@ -271,7 +271,7 @@ public class Main {
             }
         }
         System.out.println("Usuário não encontrado");
-        idUsuarioRecebidoPorHTTP = 0;
+        userIdReceivedByHTTP = 0;
     }
 
     private static void loadData() {
@@ -300,7 +300,7 @@ public class Main {
                                 if (accessId == accessId2) {
                                     String[] accesses = parts[1].split(";");
                                     String delays2 = parts[2];
-                                    accessRegister accessRegister = new accessRegister(accessId2);
+                                    AccessRegister accessRegister = new AccessRegister(accessId2);
                                     for (String access : accesses) {
                                         accessRegister.accessesArray.add(access);
                                     }
@@ -340,7 +340,7 @@ public class Main {
         }
         //save access registers data
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(accessRegistersDatabase))) {
-            for (accessRegister accessRegister : accessRegistersArray) {
+            for (AccessRegister accessRegister : accessRegistersArray) {
                 StringBuilder line = new StringBuilder();
                 line.append(accessRegister.accessId).append(",");
                 line.append(accessRegister.delays).append(",");
@@ -356,8 +356,8 @@ public class Main {
 
     }
     private static void checkDirectoriesStructure() {
-        if (!pastaControleDeAcesso.exists()) {
-            if (pastaControleDeAcesso.mkdir()) {
+        if (!accessControlFolder.exists()) {
+            if (accessControlFolder.mkdir()) {
                 System.out.println("Pasta ControleDeAcesso criada com sucesso.");
             } else {
                 System.out.println("Falha ao criar a pasta ControleDeAcesso.");
@@ -396,6 +396,7 @@ public class Main {
 
     private static void removeAccessRegisters() {
         System.out.println("---REMOÇÃO DE REGISTROS DE ACESSO---");
+        //TODO - allow user to remove access registers of specific users
         System.out.println("Tem certeza que deseja apagar TODOS os registros de acesso?\n1. Sim\n2. Não");
         int menu = scanner.nextInt();
         switch (menu) {

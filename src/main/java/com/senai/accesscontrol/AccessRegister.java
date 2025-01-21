@@ -1,13 +1,13 @@
-package com.senai.controledeacesso;
+package com.senai.accesscontrol;
 
 import java.util.ArrayList;
 
-public class accessRegister {
+public class AccessRegister {
     int accessId;
     ArrayList<String> accessesArray = new ArrayList<>();
     String delays;
 
-    public accessRegister(int accessId) {
+    public AccessRegister(int accessId) {
         this.accessId = accessId;
     }
 
